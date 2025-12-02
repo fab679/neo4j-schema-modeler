@@ -1,3 +1,6 @@
+// Library styles (extracted to dist by the lib build)
+import "./index.css";
+
 // Types
 export type {
   Node,

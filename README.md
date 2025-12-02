@@ -1,6 +1,6 @@
 # Neo4j Schema Modeler
 
-[![npm version](https://img.shields.io/npm/v/neo4j-schema-modeler)](https://www.npmjs.com/package/neo4j-schema-modeler)
+[![npm version](https://img.shields.io/npm/v/%40fabischkamau%2Fneo4j-schema-modeler)](https://www.npmjs.com/package/%40fabischkamau%2Fneo4j-schema-modeler)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
@@ -35,22 +35,22 @@ A powerful, interactive React component for visually designing and managing Neo4
 ### Using npm
 
 ```bash
-npm install neo4j-schema-modeler @neo4j-js/react
+npm install @fabischkamau/neo4j-schema-modeler
 ```
 
 ### Using yarn
 
 ```bash
-yarn add neo4j-schema-modeler @neo4j-js/react
+yarn add @fabischkamau/neo4j-schema-modeler
 ```
 
 ### Peer Dependencies
 
 This package requires the following peer dependencies:
 
-- React 16.8.0 or later
-- React DOM 16.8.0 or later
-- TypeScript 4.0.0 or later (for TypeScript support)
+- React 18.x or 19.x
+- React DOM 18.x or 19.x
+- TypeScript 5.x (for TypeScript support)
 
 ## 💻 Basic Usage
 
@@ -58,9 +58,9 @@ This package requires the following peer dependencies:
 
 ```tsx
 import React, { useState } from "react";
-import { Neo4jSchemaModeler } from "neo4j-schema-modeler";
-import type { SchemaModel } from "neo4j-schema-modeler";
-import "neo4j-schema-modeler/dist/style.css";
+import { Neo4jSchemaModeler } from "@fabischkamau/neo4j-schema-modeler";
+import type { SchemaModel } from "@fabischkamau/neo4j-schema-modeler";
+import "@fabischkamau/neo4j-schema-modeler/dist/neo4j-schema-modeler.css";
 
 // Initial schema data (optional)
 const initialSchema: SchemaModel = {
@@ -128,7 +128,7 @@ import {
   useSchemaState, // For managing schema state
   useCanvasState, // For canvas interactions
   useUndoRedo, // For undo/redo functionality
-} from "neo4j-schema-modeler";
+} from "@fabischkamau/neo4j-schema-modeler";
 
 // Example hook usage
 const {
@@ -334,17 +334,17 @@ type Neo4jPropertyType =
 
 ### Prerequisites
 
-- Node.js 16+ and npm 7+ or Yarn 1.22+
+- Node.js 18+ and npm 8+ or Yarn 1.22+
 - Git
 
 ### Getting Started
 
 1. Clone the repository:
 
-   ```bash
-   git clone https://github.com/your-username/neo4j-schema-modeler.git
-   cd neo4j-schema-modeler
-   ```
+```bash
+git clone https://github.com/fab679/neo4j-schema-modeler.git
+cd neo4j-schema-modeler
+```
 
 2. Install dependencies:
 
@@ -386,6 +386,36 @@ type Neo4jPropertyType =
    # or
    yarn lint
    ```
+
+## 🚩 Deploying to GitHub Pages
+
+This repository includes a GitHub Actions workflow which builds the Vite app and deploys the `dist/` folder to the `gh-pages` branch whenever you push to `main`.
+
+What the workflow does:
+
+- Installs Node (Node 20) and pnpm
+- Installs dependencies (dev dependencies included)
+- Runs `pnpm run build` (uses `vite.config.ts` which sets `base: '/neo4j-schema-modeler/'` so assets are loaded correctly)
+- Publishes the generated `dist/` directory to the `gh-pages` branch using `peaceiris/actions-gh-pages`
+
+How to deploy:
+
+1. Build locally and verify output:
+
+```bash
+pnpm install
+pnpm run build
+ls dist
+```
+
+2. Push your changes to `main` — the GitHub Action will run automatically and publish to GitHub Pages.
+
+3. The site will be available at: `https://<your-github-username>.github.io/neo4j-schema-modeler/` (for your repository owner `fab679` it will be `https://fab679.github.io/neo4j-schema-modeler/`).
+
+Notes:
+
+- If you prefer to publish manually, you can use a local tool like `gh-pages` or push `dist/` to the `gh-pages` branch yourself.
+- The workflow forces devDependencies to be installed even if `.npmrc` has `ignore-scripts=true` by passing installation flags in the CI step.
 
 ### Project Structure
 
