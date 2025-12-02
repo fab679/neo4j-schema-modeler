@@ -1,5 +1,5 @@
 {
-  "name": "@fabischkamau/neo4j-schema-modeler",
+  "name": "neo4j-schema-modeler",
   "version": "0.1.2",
   "description": "A React component for visually modeling Neo4j database schemas",
   "type": "module",
