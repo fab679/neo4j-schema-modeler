@@ -70,7 +70,7 @@
   "bugs": {
     "url": "https://github.com/fab679/neo4j-schema-modeler/issues"
   },
-  "homepage": "https://github.com/fab679/neo4j-schema-modeler#readme",
+  "homepage": "https://neo4j-schema-modeler.vercel.app/",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
