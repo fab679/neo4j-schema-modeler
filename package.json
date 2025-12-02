@@ -53,7 +53,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/neo4j-schema-modeler.git"
+    "url": "https://github.com/fab679/neo4j-schema-modeler.git"
   },
   "keywords": [
     "neo4j",
@@ -68,9 +68,9 @@
   "author": "Your Name <your.email@example.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/yourusername/neo4j-schema-modeler/issues"
+    "url": "https://github.com/fab679/neo4j-schema-modeler/issues"
   },
-  "homepage": "https://github.com/yourusername/neo4j-schema-modeler#readme",
+  "homepage": "https://github.com/fab679/neo4j-schema-modeler#readme",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=7.0.0"
