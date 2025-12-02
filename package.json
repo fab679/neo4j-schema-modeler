@@ -1,6 +1,6 @@
 {
   "name": "neo4j-schema-modeler",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A React component for visually modeling Neo4j database schemas",
   "type": "module",
   "main": "dist/index.umd.js",
