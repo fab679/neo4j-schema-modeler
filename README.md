@@ -1,6 +1,6 @@
 # Neo4j Schema Modeler
 
-[![npm version](https://img.shields.io/npm/v/%40fabischkamau%2Fneo4j-schema-modeler)](https://www.npmjs.com/package/%40fabischkamau%2Fneo4j-schema-modeler)
+[![npm version](https://img.shields.io/npm/v/neo4j-schema-modeler)](https://www.npmjs.com/package/neo4j-schema-modeler)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
@@ -32,16 +32,24 @@ A powerful, interactive React component for visually designing and managing Neo4
 
 ## 🚀 Installation
 
-### Using npm
+### Install
+
+Using pnpm (recommended):
 
 ```bash
-npm install @fabischkamau/neo4j-schema-modeler
+pnpm add neo4j-schema-modeler
 ```
 
-### Using yarn
+Using npm:
 
 ```bash
-yarn add @fabischkamau/neo4j-schema-modeler
+npm install neo4j-schema-modeler
+```
+
+Using yarn:
+
+```bash
+yarn add neo4j-schema-modeler
 ```
 
 ### Peer Dependencies
@@ -58,9 +66,9 @@ This package requires the following peer dependencies:
 
 ```tsx
 import React, { useState } from "react";
-import { Neo4jSchemaModeler } from "@fabischkamau/neo4j-schema-modeler";
-import type { SchemaModel } from "@fabischkamau/neo4j-schema-modeler";
-import "@fabischkamau/neo4j-schema-modeler/dist/neo4j-schema-modeler.css";
+import { Neo4jSchemaModeler } from "neo4j-schema-modeler";
+import type { SchemaModel } from "neo4j-schema-modeler";
+import "neo4j-schema-modeler/dist/neo4j-schema-modeler.css";
 
 // Initial schema data (optional)
 const initialSchema: SchemaModel = {
@@ -128,7 +136,7 @@ import {
   useSchemaState, // For managing schema state
   useCanvasState, // For canvas interactions
   useUndoRedo, // For undo/redo functionality
-} from "@fabischkamau/neo4j-schema-modeler";
+} from "neo4j-schema-modeler";
 
 // Example hook usage
 const {
@@ -387,20 +395,14 @@ cd neo4j-schema-modeler
    yarn lint
    ```
 
-## 🚩 Deploying to GitHub Pages
+## 🚩 Deployment
 
-This repository includes a GitHub Actions workflow which builds the Vite app and deploys the `dist/` folder to the `gh-pages` branch whenever you push to `main`.
+This project can be deployed to static hosts such as Vercel or GitHub Pages. Be aware of how Vite's `base` option affects asset paths:
 
-What the workflow does:
+- Vercel (recommended for this demo app): deploy the built `dist/` at root. Vercel serves from `/` so set Vite `base` to `/` or leave it unset. The demo site is available at the configured Vercel URL (see `index.html`/`.env` for the site URL).
+- GitHub Pages: if you publish to `https://<user>.github.io/neo4j-schema-modeler/` you must set `base: '/neo4j-schema-modeler/'` in `vite.config.ts` so assets are resolved relative to that subpath.
 
-- Installs Node (Node 20) and pnpm
-- Installs dependencies (dev dependencies included)
-- Runs `pnpm run build` (uses `vite.config.ts` which sets `base: '/neo4j-schema-modeler/'` so assets are loaded correctly)
-- Publishes the generated `dist/` directory to the `gh-pages` branch using `peaceiris/actions-gh-pages`
-
-How to deploy:
-
-1. Build locally and verify output:
+Build locally and verify output:
 
 ```bash
 pnpm install
@@ -408,14 +410,28 @@ pnpm run build
 ls dist
 ```
 
-2. Push your changes to `main` — the GitHub Action will run automatically and publish to GitHub Pages.
+Automatic publishing to npm and CI
 
-3. The site will be available at: `https://<your-github-username>.github.io/neo4j-schema-modeler/` (for your repository owner `fab679` it will be `https://fab679.github.io/neo4j-schema-modeler/`).
+This repository includes a GitHub Actions workflow to publish the package to npm when you push a semver tag (see `.github/workflows/publish.yml`).
 
-Notes:
+Quick publish notes (local):
 
-- If you prefer to publish manually, you can use a local tool like `gh-pages` or push `dist/` to the `gh-pages` branch yourself.
-- The workflow forces devDependencies to be installed even if `.npmrc` has `ignore-scripts=true` by passing installation flags in the CI step.
+1. Ensure `package.json` has the correct `name` (this project is published as `neo4j-schema-modeler`) and the `files` array includes `dist`.
+2. Build the library (the repo already contains `build:lib` and `build:types` scripts):
+
+```bash
+pnpm run build:lib
+pnpm run build:types
+```
+
+3. Bump version and publish:
+
+```bash
+pnpm version patch
+pnpm publish
+```
+
+If publishing from CI, add an `NPM_TOKEN` secret and push a tag (e.g. `git tag v0.1.3 && git push origin v0.1.3`) — the workflow will publish automatically.
 
 ### Project Structure
 
