@@ -298,3 +298,5 @@ export const NodeDetailsDialog: React.FC<NodeDetailsDialogProps> = ({
     </div>
   );
 };
+
+export default NodeDetailsDialog;

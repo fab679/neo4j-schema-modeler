@@ -72,7 +72,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     onClick: () => void;
     danger?: boolean;
     disabled?: boolean;
-  }> = ({ icon, label, onClick, danger, disabled }) => (
+    shortcut?: string;
+  }> = ({ icon, label, onClick, danger, disabled, shortcut }) => (
     <button
       onClick={() => {
         if (!disabled) {
@@ -90,7 +91,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       }`}
     >
       <span className={danger ? "text-red-500" : theme.textMuted}>{icon}</span>
-      {label}
+      <span className="flex-1">{label}</span>
+      {shortcut && (
+        <span className={`text-xs ${theme.textMuted}`}>{shortcut}</span>
+      )}
     </button>
   );
 
@@ -188,6 +192,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             icon={<Copy size={18} />}
             label="Duplicate Node"
             onClick={() => onDuplicateNode?.(contextMenu.targetId!)}
+            shortcut="Ctrl+D"
           />
           <MenuItem
             icon={<Palette size={18} />}
@@ -200,6 +205,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             label="Delete Node"
             onClick={() => onDeleteNode?.(contextMenu.targetId!)}
             danger
+            shortcut="Del"
           />
         </>
       )}
@@ -229,6 +235,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             label="Delete Relationship"
             onClick={() => onDeleteEdge?.(contextMenu.targetId!)}
             danger
+            shortcut="Del"
           />
         </>
       )}

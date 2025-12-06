@@ -1,11 +1,15 @@
 import type { Node, Edge, ThemeClasses, PropertyPanelPosition } from "../types";
-import { NODE_RADIUS } from "../constants";
+import {
+  NODE_RADIUS,
+  SELF_LOOP_BASE_SIZE,
+  SELF_LOOP_INCREMENT,
+} from "../constants";
 
 // Generate unique ID
 export const generateId = () =>
   Date.now().toString() + Math.random().toString(36).substr(2, 9);
 
-// Calculate curve offset for multiple edges between same nodes
+// Calculate curve offset for multiple edges between same nodes - improved spacing
 export function getEdgeCurveOffset(edge: Edge, allEdges: Edge[]): number {
   const relatedEdges = allEdges.filter(
     (e) =>
@@ -14,7 +18,19 @@ export function getEdgeCurveOffset(edge: Edge, allEdges: Edge[]): number {
   );
   if (relatedEdges.length <= 1) return 0;
   const idx = relatedEdges.findIndex((e) => e.id === edge.id);
-  return (idx - (relatedEdges.length - 1) / 2) * 0.6;
+  // Increased spacing factor for better separation
+  return (idx - (relatedEdges.length - 1) / 2) * 0.8;
+}
+
+// Get self-loop index for staggering multiple self-relationships
+export function getSelfLoopIndex(edge: Edge, allEdges: Edge[]): number {
+  const selfEdges = allEdges.filter(
+    (e) =>
+      e.source === edge.source &&
+      e.target === edge.target &&
+      e.source === e.target
+  );
+  return selfEdges.findIndex((e) => e.id === edge.id);
 }
 
 // Calculate edge path data
@@ -33,26 +49,36 @@ export function getEdgePath(
   targetX: number,
   targetY: number,
   curveOffset: number,
-  isSelf: boolean
+  isSelf: boolean,
+  selfLoopIndex: number = 0
 ): EdgePathData {
   if (isSelf) {
-    const loopSize = 60;
-    const startX = sourceX + NODE_RADIUS * 0.7;
-    const startY = sourceY - NODE_RADIUS * 0.7;
-    const endX = sourceX + NODE_RADIUS * 0.7;
-    const endY = sourceY + NODE_RADIUS * 0.7;
+    // Stagger multiple self-loops at different sizes and angles
+    const loopSize = SELF_LOOP_BASE_SIZE + selfLoopIndex * SELF_LOOP_INCREMENT;
+    const angleOffset = selfLoopIndex * 25; // Rotate each subsequent loop
+    const baseAngle = -45 + angleOffset; // Starting angle in degrees
+    const radians = (baseAngle * Math.PI) / 180;
+
+    const startAngle = radians - 0.4;
+    const endAngle = radians + 0.4;
+
+    const startX = sourceX + Math.cos(startAngle) * NODE_RADIUS;
+    const startY = sourceY + Math.sin(startAngle) * NODE_RADIUS;
+    const endX = sourceX + Math.cos(endAngle) * NODE_RADIUS;
+    const endY = sourceY + Math.sin(endAngle) * NODE_RADIUS;
+
+    const controlDistance = loopSize * 2;
+    const controlAngle = radians;
+    const cx = sourceX + Math.cos(controlAngle) * controlDistance;
+    const cy = sourceY + Math.sin(controlAngle) * controlDistance;
 
     return {
-      path: `M ${startX} ${startY} C ${sourceX + loopSize * 2} ${
-        sourceY - loopSize * 1.5
-      }, ${sourceX + loopSize * 2} ${
-        sourceY + loopSize * 1.5
-      }, ${endX} ${endY}`,
-      labelX: sourceX + loopSize * 1.8,
-      labelY: sourceY,
+      path: `M ${startX} ${startY} Q ${cx} ${cy}, ${endX} ${endY}`,
+      labelX: sourceX + Math.cos(controlAngle) * (loopSize * 1.4),
+      labelY: sourceY + Math.sin(controlAngle) * (loopSize * 1.4),
       arrowX: endX,
       arrowY: endY,
-      arrowAngle: 90,
+      arrowAngle: (endAngle * 180) / Math.PI + 90,
     };
   }
 
@@ -68,7 +94,8 @@ export function getEdgePath(
 
   const perpX = -dy / dist;
   const perpY = dx / dist;
-  const curveAmount = curveOffset * 60;
+  // Increased curve amount for better separation
+  const curveAmount = curveOffset * 70;
 
   const midX = (sx + tx) / 2 + perpX * curveAmount;
   const midY = (sy + ty) / 2 + perpY * curveAmount;
@@ -80,14 +107,14 @@ export function getEdgePath(
   return {
     path: `M ${sx} ${sy} Q ${midX} ${midY} ${tx} ${ty}`,
     labelX,
-    labelY: labelY - 12 - Math.abs(curveOffset) * 8,
+    labelY: labelY - 12 - Math.abs(curveOffset) * 12,
     arrowX: tx,
     arrowY: ty,
     arrowAngle: (Math.atan2(ty - midY, tx - midX) * 180) / Math.PI,
   };
 }
 
-// Calculate property panel position with custom positioning support
+// Calculate property panel position with 9-direction support
 export function calculatePanelPosition(
   nodeX: number,
   nodeY: number,
@@ -97,7 +124,8 @@ export function calculatePanelPosition(
 ): { left: number; top: number } {
   const panelWidth = 200;
   const panelHeight = 120;
-  const offset = NODE_RADIUS + 16;
+  const offset = NODE_RADIUS + 20;
+  const diagonalOffset = NODE_RADIUS + 16;
 
   // If custom position is set, use it
   if (customPosition && customPosition !== "auto") {
@@ -107,16 +135,39 @@ export function calculatePanelPosition(
           left: -panelWidth / 2 + NODE_RADIUS,
           top: -panelHeight - offset,
         };
+      case "top-left":
+        return {
+          left: -panelWidth - diagonalOffset + NODE_RADIUS,
+          top: -panelHeight - diagonalOffset + NODE_RADIUS,
+        };
+      case "top-right":
+        return {
+          left: NODE_RADIUS * 2 + diagonalOffset - NODE_RADIUS,
+          top: -panelHeight - diagonalOffset + NODE_RADIUS,
+        };
       case "bottom":
         return {
           left: -panelWidth / 2 + NODE_RADIUS,
-          top: NODE_RADIUS * 2 + 16,
+          top: NODE_RADIUS * 2 + 20,
+        };
+      case "bottom-left":
+        return {
+          left: -panelWidth - diagonalOffset + NODE_RADIUS,
+          top: NODE_RADIUS * 2 + diagonalOffset - NODE_RADIUS,
+        };
+      case "bottom-right":
+        return {
+          left: NODE_RADIUS * 2 + diagonalOffset - NODE_RADIUS,
+          top: NODE_RADIUS * 2 + diagonalOffset - NODE_RADIUS,
         };
       case "left":
-        return { left: -panelWidth - 16, top: -panelHeight / 2 + NODE_RADIUS };
+        return {
+          left: -panelWidth - 20,
+          top: -panelHeight / 2 + NODE_RADIUS,
+        };
       case "right":
         return {
-          left: NODE_RADIUS * 2 + 16,
+          left: NODE_RADIUS * 2 + 20,
           top: -panelHeight / 2 + NODE_RADIUS,
         };
     }
@@ -155,17 +206,17 @@ export function calculatePanelPosition(
 
   // Priority: right > left > bottom > top
   if (!hasRightNeighbor) {
-    return { left: NODE_RADIUS * 2 + 16, top: -panelHeight / 2 + NODE_RADIUS };
+    return { left: NODE_RADIUS * 2 + 20, top: -panelHeight / 2 + NODE_RADIUS };
   } else if (!hasLeftNeighbor) {
-    return { left: -panelWidth - 16, top: -panelHeight / 2 + NODE_RADIUS };
+    return { left: -panelWidth - 20, top: -panelHeight / 2 + NODE_RADIUS };
   } else if (!hasBottomNeighbor) {
-    return { left: -panelWidth / 2 + NODE_RADIUS, top: NODE_RADIUS * 2 + 16 };
+    return { left: -panelWidth / 2 + NODE_RADIUS, top: NODE_RADIUS * 2 + 20 };
   } else if (!hasTopNeighbor) {
     return { left: -panelWidth / 2 + NODE_RADIUS, top: -panelHeight - offset };
   }
 
   // Default to right
-  return { left: NODE_RADIUS * 2 + 16, top: -panelHeight / 2 + NODE_RADIUS };
+  return { left: NODE_RADIUS * 2 + 20, top: -panelHeight / 2 + NODE_RADIUS };
 }
 
 // Theme utilities

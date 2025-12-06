@@ -239,3 +239,5 @@ export const ColorPickerDialog: React.FC<ColorPickerDialogProps> = ({
     </div>
   );
 };
+
+export default ColorPickerDialog;

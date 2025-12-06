@@ -16,6 +16,7 @@ import type {
   Neo4jPropertyType,
   PropertyType,
   PropertyPanelPosition,
+  RelationshipLabelStyle,
 } from "../types";
 import {
   PROPERTY_TYPE_GROUPS,
@@ -142,28 +143,94 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
     </div>
   );
 
-  const PositionSelector: React.FC<{
+  // 9-Direction Position Selector with visual grid
+  const PositionSelector9: React.FC<{
     value: PropertyPanelPosition;
     onChange: (position: PropertyPanelPosition) => void;
-  }> = ({ value, onChange }) => (
-    <div className="grid grid-cols-5 gap-1.5">
-      {(
-        ["auto", "top", "right", "bottom", "left"] as PropertyPanelPosition[]
-      ).map((pos) => (
-        <button
-          key={pos}
-          onClick={() => onChange(pos)}
-          className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
-            value === pos
-              ? "bg-blue-500 text-white shadow-md"
-              : `${theme.input} ${theme.text} ${theme.hover} border ${theme.border}`
-          }`}
-        >
-          {pos}
-        </button>
-      ))}
-    </div>
-  );
+  }> = ({ value, onChange }) => {
+    const positions: {
+      pos: PropertyPanelPosition;
+      icon: string;
+      row: number;
+      col: number;
+    }[] = [
+      { pos: "top-left", icon: "↖", row: 0, col: 0 },
+      { pos: "top", icon: "↑", row: 0, col: 1 },
+      { pos: "top-right", icon: "↗", row: 0, col: 2 },
+      { pos: "left", icon: "←", row: 1, col: 0 },
+      { pos: "auto", icon: "●", row: 1, col: 1 },
+      { pos: "right", icon: "→", row: 1, col: 2 },
+      { pos: "bottom-left", icon: "↙", row: 2, col: 0 },
+      { pos: "bottom", icon: "↓", row: 2, col: 1 },
+      { pos: "bottom-right", icon: "↘", row: 2, col: 2 },
+    ];
+
+    return (
+      <div className={`p-3 rounded-xl border ${theme.border} ${theme.input}`}>
+        <div className="grid grid-cols-3 gap-1.5 max-w-32 mx-auto">
+          {positions.map(({ pos, icon }) => (
+            <button
+              key={pos}
+              onClick={() => onChange(pos)}
+              className={`w-10 h-10 rounded-lg text-lg font-medium flex items-center justify-center transition-all ${
+                value === pos
+                  ? "bg-blue-500 text-white shadow-md scale-105"
+                  : `${theme.surface} ${theme.text} ${theme.hover} border ${theme.border}`
+              }`}
+              title={pos}
+            >
+              {icon}
+            </button>
+          ))}
+        </div>
+        <p className={`text-xs text-center mt-2 ${theme.textMuted}`}>
+          Current: <span className="font-medium">{value || "auto"}</span>
+        </p>
+      </div>
+    );
+  };
+
+  // Relationship Label Style Selector - Updated: inline (on line), top (above), bottom (below)
+  const LabelStyleSelector: React.FC<{
+    value: RelationshipLabelStyle;
+    onChange: (style: RelationshipLabelStyle) => void;
+  }> = ({ value, onChange }) => {
+    const styles: {
+      style: RelationshipLabelStyle;
+      label: string;
+      desc: string;
+      icon: string;
+    }[] = [
+      {
+        style: "inline",
+        label: "Inline",
+        desc: "Text on the line",
+        icon: "─A─",
+      },
+      { style: "top", label: "Top", desc: "Label above line", icon: "A̅" },
+      { style: "bottom", label: "Bottom", desc: "Label below line", icon: "A̲" },
+    ];
+
+    return (
+      <div className="flex gap-2">
+        {styles.map(({ style, label, desc, icon }) => (
+          <button
+            key={style}
+            onClick={() => onChange(style)}
+            className={`flex-1 py-2.5 px-2 rounded-lg text-sm font-medium transition-all flex flex-col items-center gap-1 ${
+              value === style
+                ? "bg-blue-500 text-white shadow-md"
+                : `${theme.input} ${theme.text} ${theme.hover} border ${theme.border}`
+            }`}
+            title={desc}
+          >
+            <span className="text-xs font-mono">{icon}</span>
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+    );
+  };
 
   const SectionHeader: React.FC<{ children: React.ReactNode }> = ({
     children,
@@ -188,8 +255,8 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-6">
-        {/* Node Properties */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* Node Editor */}
         {selectedNode && (
           <div className="space-y-5">
             {/* Label */}
@@ -199,15 +266,21 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 type="text"
                 value={selectedNode.data.label}
                 onChange={(e) =>
-                  onUpdateNodeData(selectedNode.id, { label: e.target.value })
+                  onUpdateNodeData(selectedNode.id, {
+                    label: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+                  })
                 }
-                className={`w-full px-4 py-2.5 border ${theme.border} rounded-lg ${theme.input} ${theme.text} text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors`}
+                className={`w-full px-4 py-3 border ${theme.border} rounded-xl ${theme.input} ${theme.text} font-semibold text-lg focus:ring-2 focus:ring-blue-500`}
+                placeholder="NodeLabel"
               />
+              <p className={`text-xs ${theme.textMuted} mt-2`}>
+                PascalCase recommended (e.g., UserProfile)
+              </p>
             </div>
 
-            {/* Definition */}
+            {/* Definition/Description */}
             <div>
-              <SectionHeader>Definition</SectionHeader>
+              <SectionHeader>Definition (Optional)</SectionHeader>
               <textarea
                 value={selectedNode.data.definition || ""}
                 onChange={(e) =>
@@ -215,8 +288,9 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     definition: e.target.value,
                   })
                 }
+                className={`w-full px-4 py-3 border ${theme.border} rounded-xl ${theme.input} ${theme.text} text-sm resize-none focus:ring-2 focus:ring-blue-500`}
+                rows={3}
                 placeholder="Describe what this node represents..."
-                className={`w-full px-4 py-2.5 border ${theme.border} rounded-lg ${theme.input} ${theme.text} min-h-24 resize-none text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors`}
               />
             </div>
 
@@ -240,11 +314,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
             {/* Property Panel Position */}
             <div>
               <SectionHeader>Property Panel Position</SectionHeader>
-              <PositionSelector
+              <PositionSelector9
                 value={selectedNode.data.propertyPanelPosition || "auto"}
-                onChange={(pos) =>
+                onChange={(position) =>
                   onUpdateNodeData(selectedNode.id, {
-                    propertyPanelPosition: pos,
+                    propertyPanelPosition: position,
                   })
                 }
               />
@@ -252,7 +326,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
 
             {/* Properties */}
             <div>
-              <div className="flex justify-between items-center mb-3">
+              <div className="flex justify-between items-center mb-2.5">
                 <SectionHeader>
                   Properties ({selectedNode.data.properties.length})
                 </SectionHeader>
@@ -271,31 +345,28 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                   <p className={`text-sm ${theme.textMuted}`}>
                     No properties defined yet.
                   </p>
-                  <button
-                    onClick={() => onAddNodeProperty(selectedNode.id)}
-                    className={`mt-3 text-blue-500 text-sm font-medium hover:text-blue-600`}
-                  >
-                    + Add your first property
-                  </button>
+                  <p className={`text-xs ${theme.textMuted} mt-1`}>
+                    Click "Add" to create a property
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
                   {selectedNode.data.properties.map((prop, idx) => (
                     <div
                       key={idx}
-                      className={`border ${theme.border} rounded-xl overflow-hidden ${theme.input} card-shadow`}
+                      className={`border ${theme.border} rounded-xl ${theme.input} overflow-hidden card-shadow`}
                     >
-                      {/* Property header */}
+                      {/* Property Header */}
                       <div
-                        className={`flex items-center justify-between p-3 cursor-pointer ${theme.hover}`}
+                        className={`px-4 py-3 flex items-center justify-between cursor-pointer ${theme.hover}`}
                         onClick={() => togglePropertyExpanded(idx)}
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-3">
                           <span className={`font-medium ${theme.text}`}>
-                            {prop.name || "Unnamed"}
+                            {prop.name || "unnamed"}
                           </span>
                           <span
-                            className={`text-xs px-2 py-0.5 rounded ${
+                            className={`text-xs px-2 py-0.5 rounded-md ${
                               darkMode ? "bg-gray-600" : "bg-gray-200"
                             } ${theme.textMuted}`}
                           >
@@ -319,17 +390,20 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                             </span>
                           )}
                           {expandedProperties.has(idx) ? (
-                            <ChevronUp size={18} />
+                            <ChevronUp size={18} className={theme.textMuted} />
                           ) : (
-                            <ChevronDown size={18} />
+                            <ChevronDown
+                              size={18}
+                              className={theme.textMuted}
+                            />
                           )}
                         </div>
                       </div>
 
-                      {/* Property details */}
+                      {/* Expanded Content */}
                       {expandedProperties.has(idx) && (
                         <div
-                          className={`p-3.5 border-t ${theme.border} space-y-3`}
+                          className={`px-4 py-3 border-t ${theme.border} space-y-3.5`}
                         >
                           <input
                             type="text"
@@ -352,8 +426,11 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                               })
                             }
                           />
-                          <div className="flex gap-3 flex-wrap">
-                            <label className="flex items-center gap-2 cursor-pointer">
+                          {/* Constraints */}
+                          <div className="flex gap-4">
+                            <label
+                              className={`flex items-center gap-2 text-sm ${theme.text} cursor-pointer`}
+                            >
                               <input
                                 type="checkbox"
                                 checked={prop.required || false}
@@ -365,11 +442,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                                 }
                                 className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                               />
-                              <span className={`text-sm ${theme.text}`}>
+                              <span className="text-red-500 font-semibold">
                                 Required
                               </span>
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label
+                              className={`flex items-center gap-2 text-sm ${theme.text} cursor-pointer`}
+                            >
                               <input
                                 type="checkbox"
                                 checked={prop.unique || false}
@@ -381,11 +460,13 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                                 }
                                 className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                               />
-                              <span className={`text-sm ${theme.text}`}>
+                              <span className="text-blue-500 font-semibold">
                                 Unique
                               </span>
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
+                            <label
+                              className={`flex items-center gap-2 text-sm ${theme.text} cursor-pointer`}
+                            >
                               <input
                                 type="checkbox"
                                 checked={prop.indexed || false}
@@ -397,7 +478,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                                 }
                                 className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                               />
-                              <span className={`text-sm ${theme.text}`}>
+                              <span className="text-green-500 font-semibold">
                                 Indexed
                               </span>
                             </label>
@@ -428,7 +509,7 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
           </div>
         )}
 
-        {/* Edge Properties */}
+        {/* Edge Editor */}
         {selectedEdge && (
           <div className="space-y-5">
             {/* Relationship Type */}
@@ -451,13 +532,24 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
               </p>
             </div>
 
-            {/* Reverse */}
+            {/* Reverse Direction */}
             <button
               onClick={() => onReverseEdge(selectedEdge.id)}
               className="w-full bg-blue-500 text-white py-2.5 rounded-lg hover:bg-blue-600 flex items-center justify-center gap-2 font-medium shadow-md hover:shadow-lg transition-all"
             >
               <ArrowLeftRight size={18} /> Reverse Direction
             </button>
+
+            {/* Label Style */}
+            <div>
+              <SectionHeader>Label Position</SectionHeader>
+              <LabelStyleSelector
+                value={selectedEdge.data.labelStyle || "top"}
+                onChange={(style) =>
+                  onUpdateEdgeData(selectedEdge.id, { labelStyle: style })
+                }
+              />
+            </div>
 
             {/* Color */}
             <div>
@@ -590,6 +682,16 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                       darkMode ? "bg-gray-600" : "bg-gray-200"
                     } rounded text-xs font-mono`}
                   >
+                    Ctrl+D
+                  </kbd>
+                  <span>Duplicate selected node</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <kbd
+                    className={`px-2 py-1 ${
+                      darkMode ? "bg-gray-600" : "bg-gray-200"
+                    } rounded text-xs font-mono`}
+                  >
                     Esc
                   </kbd>
                   <span>Deselect all</span>
@@ -603,6 +705,16 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                     Scroll
                   </kbd>
                   <span>Zoom in/out</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <kbd
+                    className={`px-2 py-1 ${
+                      darkMode ? "bg-gray-600" : "bg-gray-200"
+                    } rounded text-xs font-mono`}
+                  >
+                    Shift+Scroll
+                  </kbd>
+                  <span>Pan left/right</span>
                 </li>
               </ul>
 

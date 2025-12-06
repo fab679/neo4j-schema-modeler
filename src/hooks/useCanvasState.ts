@@ -57,6 +57,14 @@ export function useCanvasState() {
     setIsPanning(false);
   }, []);
 
+  // Horizontal pan (for shift+scroll)
+  const panHorizontal = useCallback((delta: number) => {
+    setPanOffset((prev) => ({
+      x: prev.x - delta,
+      y: prev.y,
+    }));
+  }, []);
+
   // Zoom
   const zoomIn = useCallback(() => {
     setZoom((prev) => Math.min(ZOOM_MAX, prev * 1.2));
@@ -66,10 +74,19 @@ export function useCanvasState() {
     setZoom((prev) => Math.max(ZOOM_MIN, prev * 0.8));
   }, []);
 
-  const handleWheel = useCallback((deltaY: number) => {
-    const delta = deltaY > 0 ? 0.9 : 1.1;
-    setZoom((prev) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, prev * delta)));
-  }, []);
+  const handleWheel = useCallback(
+    (deltaY: number, shiftKey: boolean = false) => {
+      if (shiftKey) {
+        // Shift+scroll = horizontal pan
+        panHorizontal(deltaY);
+      } else {
+        // Normal scroll = zoom
+        const delta = deltaY > 0 ? 0.9 : 1.1;
+        setZoom((prev) => Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, prev * delta)));
+      }
+    },
+    [panHorizontal]
+  );
 
   const resetView = useCallback(() => {
     setPanOffset({ x: 0, y: 0 });
@@ -118,6 +135,7 @@ export function useCanvasState() {
     startPan,
     updatePan,
     endPan,
+    panHorizontal,
     // Zoom
     zoomIn,
     zoomOut,

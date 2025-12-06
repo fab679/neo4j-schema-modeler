@@ -1,16 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
-import { Moon, Sun } from "lucide-react";
-import type {
-  Node,
-  Edge,
-  ContextMenuState,
-  Position,
-  SchemaModel,
-} from "./types";
-import { DEFAULT_NODE_COLORS } from "./constants";
-import { useSchemaState } from "./hooks/useSchemaState";
-import { useCanvasState } from "./hooks/useCanvasState";
-import { getThemeClasses, generateCypher, downloadFile } from "./utils";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   Toolbar,
   Canvas,
@@ -20,26 +8,75 @@ import {
   NodeDetailsDialog,
   ColorPickerDialog,
 } from "./components";
+import { useSchemaState, useCanvasState } from "./hooks";
+import {
+  getThemeClasses,
+  generateCypher,
+  downloadFile,
+  calculatePanelPosition,
+} from "./utils";
+import type { ContextMenuState, Position, Node, Edge } from "./types";
+import { NODE_RADIUS } from "./constants";
 
-interface Neo4jSchemaModelerProps {
-  initialData?: SchemaModel;
-  darkMode?: boolean;
-  onSchemaChange?: (schema: SchemaModel) => void;
-}
+const App: React.FC = () => {
+  // Theme state
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("neo4j-modeler-dark-mode");
+    return saved ? JSON.parse(saved) : true;
+  });
+  const theme = getThemeClasses(darkMode);
 
-const Neo4jSchemaModeler: React.FC<Neo4jSchemaModelerProps> = ({
-  initialData,
-  darkMode = false,
-  onSchemaChange,
-}) => {
-  // Schema state
+  // Schema state (nodes & edges) - start with empty canvas
   const schema = useSchemaState();
+  const {
+    nodes,
+    edges,
+    getNodeById,
+    getEdgeById,
+    addNode,
+    updateNodeData,
+    updateNodePosition,
+    deleteNode,
+    duplicateNode,
+    addEdge,
+    updateEdgeData,
+    deleteEdge,
+    reverseEdge,
+    addNodeProperty,
+    updateNodeProperty,
+    deleteNodeProperty,
+    addEdgeProperty,
+    updateEdgeProperty,
+    deleteEdgeProperty,
+    clearAll,
+    loadSchema,
+  } = schema;
 
-  // Canvas state
+  // Canvas state (pan, zoom, selection)
   const canvas = useCanvasState();
+  const {
+    canvasRef,
+    panOffset,
+    zoom,
+    isPanning,
+    selectedNodeId,
+    selectedEdgeId,
+    hoveredNodeId,
+    selectNode,
+    selectEdge,
+    clearSelection,
+    setHoveredNodeId,
+    startPan,
+    updatePan,
+    endPan,
+    zoomIn,
+    zoomOut,
+    handleWheel,
+    resetView,
+    screenToCanvas,
+  } = canvas;
 
-  // Local state
-  const [isDragging, setIsDragging] = useState(false);
+  // Interaction state
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionSourceId, setConnectionSourceId] = useState<string | null>(
@@ -49,283 +86,300 @@ const Neo4jSchemaModeler: React.FC<Neo4jSchemaModelerProps> = ({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   // Dialog state
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [detailsNodeId, setDetailsNodeId] = useState<string | null>(null);
-  const [colorPickerTarget, setColorPickerTarget] = useState<{
-    type: "node" | "edge";
-    id: string;
-  } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    variant?: "danger" | "warning" | "info";
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+
+  const [nodeDetailsDialog, setNodeDetailsDialog] = useState<{
+    isOpen: boolean;
+    nodeId: string | null;
+  }>({ isOpen: false, nodeId: null });
+
+  const [colorPickerDialog, setColorPickerDialog] = useState<{
+    isOpen: boolean;
+    targetType: "node" | "edge";
+    targetId: string | null;
+    currentColor: string;
+  }>({
+    isOpen: false,
+    targetType: "node",
+    targetId: null,
+    currentColor: "#FF6B6B",
+  });
 
   // Refs
+  const dragStartRef = useRef<Position>({ x: 0, y: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Theme
-  const theme = getThemeClasses(darkMode);
-
-  // Initialize with data
+  // Persist dark mode
   useEffect(() => {
-    if (initialData) {
-      schema.loadSchema(initialData.nodes, initialData.edges);
-    } else {
-      // Sample data
-      const sampleNodes: Node[] = [
-        {
-          id: "1",
-          x: 200,
-          y: 200,
-          data: {
-            label: "Person",
-            properties: [
-              { name: "id", type: "String", required: true, unique: true },
-              { name: "name", type: "String", required: true },
-              { name: "email", type: "String", unique: true },
-            ],
-            color: DEFAULT_NODE_COLORS[0],
-            definition: "Represents a person in the system",
-          },
-        },
-        {
-          id: "2",
-          x: 550,
-          y: 200,
-          data: {
-            label: "Company",
-            properties: [
-              { name: "name", type: "String", required: true },
-              { name: "founded", type: "Date" },
-            ],
-            color: DEFAULT_NODE_COLORS[1],
-            definition: "Represents a company or organization",
-          },
-        },
-      ];
-      const sampleEdges: Edge[] = [
-        {
-          id: "e1",
-          source: "1",
-          target: "2",
-          data: {
-            relationshipType: "WORKS_AT",
-            properties: [
-              { name: "since", type: "Date" },
-              { name: "role", type: "String" },
-            ],
-            color: "#6b7280",
-          },
-        },
-      ];
-      schema.loadSchema(sampleNodes, sampleEdges);
-    }
-  }, []);
+    localStorage.setItem("neo4j-modeler-dark-mode", JSON.stringify(darkMode));
+    document.documentElement.classList.toggle("dark", darkMode);
+  }, [darkMode]);
 
-  // Notify parent of schema changes
-  useEffect(() => {
-    onSchemaChange?.({ nodes: schema.nodes, edges: schema.edges });
-  }, [schema.nodes, schema.edges, onSchemaChange]);
+  // Selected items
+  const selectedNode = selectedNodeId ? getNodeById(selectedNodeId) : null;
+  const selectedEdge = selectedEdgeId ? getEdgeById(selectedEdgeId) : null;
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return;
-      }
+  // ============ Canvas Event Handlers ============
 
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (canvas.selectedNodeId) {
-          schema.deleteNode(canvas.selectedNodeId);
-          canvas.selectNode(null);
-        } else if (canvas.selectedEdgeId) {
-          schema.deleteEdge(canvas.selectedEdgeId);
-          canvas.selectEdge(null);
-        }
-      } else if (e.key === "Escape") {
-        canvas.clearSelection();
-        setContextMenu(null);
-        setDetailsNodeId(null);
-        setColorPickerTarget(null);
-        setIsConnecting(false);
-        setConnectionSourceId(null);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canvas.selectedNodeId, canvas.selectedEdgeId, schema, canvas]);
-
-  // Screen to canvas conversion
-  const screenToCanvas = useCallback(
-    (clientX: number, clientY: number): Position => {
-      const rect = canvas.canvasRef.current?.getBoundingClientRect();
-      if (!rect) return { x: 0, y: 0 };
-      return {
-        x: (clientX - rect.left - canvas.panOffset.x) / canvas.zoom,
-        y: (clientY - rect.top - canvas.panOffset.y) / canvas.zoom,
-      };
-    },
-    [canvas.panOffset, canvas.zoom, canvas.canvasRef]
-  );
-
-  // Canvas event handlers
   const handleCanvasMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
+      if (e.button === 2) return;
+
       setContextMenu(null);
-      canvas.startPan(e.clientX, e.clientY);
-      canvas.clearSelection();
+
+      if (e.button === 0 && !draggedNodeId) {
+        clearSelection();
+        startPan(e.clientX, e.clientY);
+      }
     },
-    [canvas]
+    [clearSelection, startPan, draggedNodeId]
   );
 
   const handleCanvasMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      const pos = screenToCanvas(e.clientX, e.clientY);
-      setMousePos(pos);
+      const canvasPos = screenToCanvas(e.clientX, e.clientY);
+      setMousePos(canvasPos);
 
-      if (isDragging && draggedNodeId) {
-        schema.updateNodePosition(draggedNodeId, pos.x, pos.y);
-      } else if (canvas.isPanning && !isConnecting) {
-        canvas.updatePan(e.clientX, e.clientY);
+      if (draggedNodeId) {
+        updateNodePosition(draggedNodeId, canvasPos.x, canvasPos.y);
+      } else if (isPanning) {
+        updatePan(e.clientX, e.clientY);
       }
     },
-    [
-      isDragging,
-      draggedNodeId,
-      canvas.isPanning,
-      isConnecting,
-      screenToCanvas,
-      schema,
-      canvas,
-    ]
+    [draggedNodeId, isPanning, screenToCanvas, updateNodePosition, updatePan]
   );
 
   const handleCanvasMouseUp = useCallback(
-    (_e: React.MouseEvent, nodeId?: string) => {
-      if (isConnecting && connectionSourceId && nodeId) {
-        schema.addEdge(connectionSourceId, nodeId);
-        canvas.selectEdge(schema.edges[schema.edges.length - 1]?.id || null);
+    (e: React.MouseEvent) => {
+      if (isConnecting && connectionSourceId && hoveredNodeId) {
+        addEdge(connectionSourceId, hoveredNodeId);
       }
 
-      setIsDragging(false);
       setDraggedNodeId(null);
       setIsConnecting(false);
       setConnectionSourceId(null);
-      canvas.endPan();
+      endPan();
     },
-    [isConnecting, connectionSourceId, schema, canvas]
+    [isConnecting, connectionSourceId, hoveredNodeId, addEdge, endPan]
   );
 
   const handleCanvasWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
-      canvas.handleWheel(e.deltaY);
+      handleWheel(e.deltaY, e.shiftKey);
     },
-    [canvas]
+    [handleWheel]
   );
 
-  const handleCanvasContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      const rect = canvas.canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        setContextMenu({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-          type: "canvas",
-        });
-      }
-    },
-    [canvas.canvasRef]
-  );
+  const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type: "canvas",
+    });
+  }, []);
 
-  // Node event handlers
+  // ============ Node Event Handlers ============
+
   const handleNodeMouseDown = useCallback(
     (e: React.MouseEvent, nodeId: string) => {
       e.stopPropagation();
       if (e.button !== 0) return;
 
-      setContextMenu(null);
-      setIsDragging(true);
+      selectNode(nodeId);
       setDraggedNodeId(nodeId);
-      canvas.selectNode(nodeId);
+
+      const node = getNodeById(nodeId);
+      if (node) {
+        dragStartRef.current = { x: node.x, y: node.y };
+      }
     },
-    [canvas]
+    [selectNode, getNodeById]
   );
 
   const handleNodeMouseUp = useCallback(
     (e: React.MouseEvent, nodeId: string) => {
-      e.stopPropagation();
-      handleCanvasMouseUp(e, nodeId);
+      if (isConnecting && connectionSourceId) {
+        addEdge(connectionSourceId, nodeId);
+        setIsConnecting(false);
+        setConnectionSourceId(null);
+      }
+      setDraggedNodeId(null);
     },
-    [handleCanvasMouseUp]
+    [isConnecting, connectionSourceId, addEdge]
+  );
+
+  const handleNodeDoubleClick = useCallback(
+    (e: React.MouseEvent, nodeId: string) => {
+      e.stopPropagation();
+      setNodeDetailsDialog({ isOpen: true, nodeId });
+    },
+    []
   );
 
   const handleNodeContextMenu = useCallback(
     (e: React.MouseEvent, nodeId: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const rect = canvas.canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        setContextMenu({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-          type: "node",
-          targetId: nodeId,
-        });
-      }
+      selectNode(nodeId);
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: "node",
+        targetId: nodeId,
+      });
     },
-    [canvas.canvasRef]
+    [selectNode]
   );
 
   const handleConnectionStart = useCallback(
     (e: React.MouseEvent, nodeId: string) => {
       e.stopPropagation();
-      e.preventDefault();
       setIsConnecting(true);
       setConnectionSourceId(nodeId);
-      setIsDragging(false);
-      setDraggedNodeId(null);
     },
     []
   );
 
-  // Edge event handlers
+  // ============ Edge Event Handlers ============
+
   const handleEdgeClick = useCallback(
     (e: React.MouseEvent, edgeId: string) => {
       e.stopPropagation();
-      canvas.selectEdge(edgeId);
-      setContextMenu(null);
+      selectEdge(edgeId);
     },
-    [canvas]
+    [selectEdge]
   );
 
   const handleEdgeContextMenu = useCallback(
     (e: React.MouseEvent, edgeId: string) => {
       e.preventDefault();
       e.stopPropagation();
-      const rect = canvas.canvasRef.current?.getBoundingClientRect();
-      if (rect) {
-        setContextMenu({
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-          type: "edge",
-          targetId: edgeId,
-        });
-      }
+      selectEdge(edgeId);
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        type: "edge",
+        targetId: edgeId,
+      });
     },
-    [canvas.canvasRef]
+    [selectEdge]
   );
 
-  // Export functions
-  const exportAsJSON = useCallback(() => {
-    const data: SchemaModel = {
-      nodes: schema.nodes,
-      edges: schema.edges,
+  // ============ Keyboard Shortcuts ============
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedNodeId) {
+          setConfirmDialog({
+            isOpen: true,
+            title: "Delete Node",
+            message:
+              "Are you sure you want to delete this node and all its relationships?",
+            variant: "danger",
+            onConfirm: () => {
+              deleteNode(selectedNodeId);
+              clearSelection();
+            },
+          });
+        } else if (selectedEdgeId) {
+          deleteEdge(selectedEdgeId);
+          clearSelection();
+        }
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "d") {
+        e.preventDefault();
+        if (selectedNodeId) {
+          const newNode = duplicateNode(selectedNodeId);
+          if (newNode) {
+            selectNode(newNode.id);
+          }
+        }
+      }
+
+      if (e.key === "Escape") {
+        clearSelection();
+        setContextMenu(null);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        setNodeDetailsDialog({ isOpen: false, nodeId: null });
+        setColorPickerDialog((prev) => ({ ...prev, isOpen: false }));
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [
+    selectedNodeId,
+    selectedEdgeId,
+    deleteNode,
+    deleteEdge,
+    duplicateNode,
+    selectNode,
+    clearSelection,
+  ]);
+
+  // ============ Toolbar Actions ============
+
+  const handleAddNode = useCallback(() => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const centerX = (rect.width / 2 - panOffset.x) / zoom;
+    const centerY = (rect.height / 2 - panOffset.y) / zoom;
+
+    const newNode = addNode({ x: centerX, y: centerY });
+    selectNode(newNode.id);
+  }, [canvasRef, panOffset, zoom, addNode, selectNode]);
+
+  const handleAddNodeAtPosition = useCallback(
+    (x: number, y: number) => {
+      const newNode = addNode({ x, y });
+      selectNode(newNode.id);
+    },
+    [addNode, selectNode]
+  );
+
+  const handleClearCanvas = useCallback(() => {
+    setConfirmDialog({
+      isOpen: true,
+      title: "Clear Canvas",
+      message: "This will delete all nodes and relationships. Are you sure?",
+      variant: "danger",
+      onConfirm: () => {
+        clearAll();
+        resetView();
+        clearSelection();
+      },
+    });
+  }, [clearAll, resetView, clearSelection]);
+
+  // ============ Export Functions ============
+
+  const handleExportJSON = useCallback(() => {
+    const data = {
+      nodes,
+      edges,
       metadata: {
-        version: "1.0",
+        version: "2.1",
         exportedAt: new Date().toISOString(),
+        name: "Neo4j Schema",
       },
     };
     downloadFile(
@@ -333,421 +387,770 @@ const Neo4jSchemaModeler: React.FC<Neo4jSchemaModelerProps> = ({
       "neo4j-schema.json",
       "application/json"
     );
-  }, [schema.nodes, schema.edges]);
+  }, [nodes, edges]);
 
-  const exportAsCypher = useCallback(() => {
-    const cypher = generateCypher(
-      schema.nodes,
-      schema.edges,
-      schema.getNodeById
-    );
+  const handleExportCypher = useCallback(() => {
+    const cypher = generateCypher(nodes, edges, getNodeById);
     downloadFile(cypher, "neo4j-schema.cypher", "text/plain");
-  }, [schema.nodes, schema.edges, schema.getNodeById]);
+  }, [nodes, edges, getNodeById]);
 
-  const exportAsImage = useCallback(() => {
-    const canvasEl = document.createElement("canvas");
-    const ctx = canvasEl.getContext("2d");
-    if (!ctx) return;
+  const handleExportImage = useCallback(() => {
+    if (!canvasRef.current) return;
+    if (nodes.length === 0) {
+      alert("Nothing to export. Add some nodes first.");
+      return;
+    }
 
-    // Calculate bounds to include all nodes and their properties
+    const PADDING = 80;
+    const PANEL_WIDTH = 280;
+    const PANEL_HEIGHT = 200;
+    const EDGE_PROP_PANEL_WIDTH = 150;
+    const EDGE_PROP_PANEL_HEIGHT = 120;
+
     let minX = Infinity,
       minY = Infinity,
       maxX = -Infinity,
       maxY = -Infinity;
 
-    // First pass to calculate the required canvas size
-    schema.nodes.forEach((node) => {
-      // Account for node size and properties panel
-      const nodeLeft = node.x - 120; // Extra space for properties
-      const nodeRight = node.x + 320; // Width of properties panel + node
-      const nodeTop = node.y - 100;
-      const nodeBottom = node.y + 100;
+    // Calculate bounds for nodes
+    nodes.forEach((node) => {
+      const nodeLeft = node.x - NODE_RADIUS;
+      const nodeRight = node.x + NODE_RADIUS;
+      const nodeTop = node.y - NODE_RADIUS;
+      const nodeBottom = node.y + NODE_RADIUS;
 
       minX = Math.min(minX, nodeLeft);
-      minY = Math.min(minY, nodeTop);
       maxX = Math.max(maxX, nodeRight);
+      minY = Math.min(minY, nodeTop);
       maxY = Math.max(maxY, nodeBottom);
-    });
 
-    const padding = 100;
-    canvasEl.width = Math.max(1200, maxX - minX + padding * 2);
-    canvasEl.height = Math.max(800, maxY - minY + padding * 2);
+      if (node.data.properties.length > 0) {
+        const panelPos = calculatePanelPosition(
+          node.x,
+          node.y,
+          node.id,
+          nodes,
+          node.data.propertyPanelPosition
+        );
 
-    const offsetX = -minX + padding;
-    const offsetY = -minY + padding;
+        const panelLeft = node.x - NODE_RADIUS + panelPos.left;
+        const panelRight = panelLeft + PANEL_WIDTH;
+        const panelTop = node.y - NODE_RADIUS + panelPos.top;
+        const panelBottom = panelTop + PANEL_HEIGHT;
 
-    // Set background
-    ctx.fillStyle = darkMode ? "#1a1a2e" : "#ffffff";
-    ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
-
-    // Draw edges first (behind nodes)
-    schema.edges.forEach((edge) => {
-      const source = schema.getNodeById(edge.source);
-      const target = schema.getNodeById(edge.target);
-      if (source && target) {
-        // Draw edge line
-        ctx.strokeStyle = edge.data.color || (darkMode ? "#6b7280" : "#9ca3af");
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(source.x + offsetX, source.y + offsetY);
-        ctx.lineTo(target.x + offsetX, target.y + offsetY);
-        ctx.stroke();
-
-        // Draw edge label
-        const midX = (source.x + target.x) / 2 + offsetX;
-        const midY = (source.y + target.y) / 2 + offsetY;
-        ctx.fillStyle = darkMode ? "#e5e7eb" : "#374151";
-        ctx.font = "bold 12px sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(edge.data.relationshipType, midX, midY - 8);
+        minX = Math.min(minX, panelLeft);
+        maxX = Math.max(maxX, panelRight);
+        minY = Math.min(minY, panelTop);
+        maxY = Math.max(maxY, panelBottom);
       }
     });
 
-    // Draw nodes and their properties
-    schema.nodes.forEach((node) => {
-      const nodeX = node.x + offsetX;
-      const nodeY = node.y + offsetY;
-      const nodeRadius = 40;
+    // Calculate bounds for edges (including self-loops and property panels)
+    edges.forEach((edge) => {
+      const source = getNodeById(edge.source);
+      const target = getNodeById(edge.target);
+      if (!source || !target) return;
 
-      // Draw node circle
-      ctx.fillStyle = node.data.color || (darkMode ? "#3b82f6" : "#2563eb");
+      if (edge.source === edge.target) {
+        minX = Math.min(minX, source.x - 160);
+        maxX = Math.max(maxX, source.x + 160);
+        minY = Math.min(minY, source.y - 200);
+        maxY = Math.max(maxY, source.y + 160);
+      } else {
+        const midX = (source.x + target.x) / 2;
+        const midY = (source.y + target.y) / 2;
+
+        if (edge.data.properties.length > 0) {
+          minX = Math.min(minX, midX - EDGE_PROP_PANEL_WIDTH);
+          maxX = Math.max(maxX, midX + EDGE_PROP_PANEL_WIDTH);
+          minY = Math.min(minY, midY - EDGE_PROP_PANEL_HEIGHT);
+          maxY = Math.max(maxY, midY + EDGE_PROP_PANEL_HEIGHT);
+        }
+      }
+    });
+
+    const width = maxX - minX + PADDING * 2;
+    const height = maxY - minY + PADDING * 2;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.scale(2, 2);
+
+    // Background
+    ctx.fillStyle = darkMode ? "#111827" : "#f9fafb";
+    ctx.fillRect(0, 0, width, height);
+
+    // Grid
+    ctx.fillStyle = darkMode ? "#374151" : "#d1d5db";
+    for (let x = 0; x < width; x += 24) {
+      for (let y = 0; y < height; y += 24) {
+        ctx.beginPath();
+        ctx.arc(x, y, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    const offsetX = PADDING - minX;
+    const offsetY = PADDING - minY;
+
+    // Helper function to draw edge property panel
+    const drawEdgePropertyPanel = (
+      edge: Edge,
+      labelX: number,
+      labelY: number,
+      perpX: number,
+      perpY: number
+    ) => {
+      if (edge.data.properties.length === 0) return;
+
+      const panelWidth = 140;
+      const rowHeight = 16;
+      const headerHeight = 22;
+      const paddingY = 8;
+      const propsToShow = edge.data.properties.slice(0, 4);
+      const panelHeight =
+        headerHeight + propsToShow.length * rowHeight + paddingY;
+
+      const labelStyle = edge.data.labelStyle || "top";
+
+      let panelOffsetDistance = 0;
+      if (labelStyle === "top") {
+        panelOffsetDistance = 50;
+      } else if (labelStyle === "bottom") {
+        panelOffsetDistance = -50;
+      } else {
+        panelOffsetDistance = 45;
+      }
+
+      const panelX = labelX;
+      const panelY = labelY + perpY * panelOffsetDistance;
+
+      ctx.shadowColor = "rgba(0, 0, 0, 0.1)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+
+      ctx.fillStyle = darkMode ? "#1f2937" : "#ffffff";
       ctx.beginPath();
-      ctx.arc(nodeX, nodeY, nodeRadius, 0, Math.PI * 2);
+      ctx.roundRect(
+        panelX - panelWidth / 2,
+        panelY - panelHeight / 2,
+        panelWidth,
+        panelHeight,
+        6
+      );
       ctx.fill();
 
-      // Draw node border
-      ctx.strokeStyle = darkMode ? "#ffffff" : "#000000";
-      ctx.lineWidth = 2;
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+      ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Draw node label
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 14px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(node.data.label, nodeX, nodeY);
+      ctx.fillStyle = darkMode ? "#9ca3af" : "#6b7280";
+      ctx.font = "600 8px 'Google Sans', sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(
+        "PROPERTIES",
+        panelX - panelWidth / 2 + 8,
+        panelY - panelHeight / 2 + 14
+      );
 
-      // Draw properties container if node has properties
-      if (node.data.properties && node.data.properties.length > 0) {
-        // Calculate properties box size based on number of properties
-        const propBoxWidth = 220;
-        const propBoxHeight = 40 + node.data.properties.length * 22;
-        const propBoxX = nodeX + nodeRadius + 20;
-        const propBoxY = nodeY - propBoxHeight / 2;
+      ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+      ctx.beginPath();
+      ctx.moveTo(
+        panelX - panelWidth / 2 + 6,
+        panelY - panelHeight / 2 + headerHeight
+      );
+      ctx.lineTo(
+        panelX + panelWidth / 2 - 6,
+        panelY - panelHeight / 2 + headerHeight
+      );
+      ctx.stroke();
 
-        // Draw properties box with rounded corners
-        ctx.fillStyle = darkMode ? "#2d3748" : "#f3f4f6";
-        ctx.strokeStyle = darkMode ? "#4a5568" : "#d1d5db";
-        ctx.lineWidth = 1;
+      propsToShow.forEach((prop, idx) => {
+        const propY =
+          panelY -
+          panelHeight / 2 +
+          headerHeight +
+          4 +
+          idx * rowHeight +
+          rowHeight / 2;
 
-        // Create rounded rectangle path
-        const radius = 8;
+        ctx.fillStyle = darkMode ? "#e5e7eb" : "#374151";
+        ctx.font = "500 9px 'Google Sans', sans-serif";
+        ctx.textAlign = "left";
+        const propName =
+          prop.name.length > 10 ? prop.name.slice(0, 10) + "…" : prop.name;
+        ctx.fillText(propName, panelX - panelWidth / 2 + 8, propY);
+
+        ctx.fillStyle = darkMode ? "#6b7280" : "#9ca3af";
+        ctx.font = "400 8px 'Google Sans', sans-serif";
+        ctx.textAlign = "right";
+        ctx.fillText(prop.type, panelX + panelWidth / 2 - 8, propY);
+      });
+
+      if (edge.data.properties.length > 4) {
+        ctx.fillStyle = darkMode ? "#6b7280" : "#9ca3af";
+        ctx.font = "italic 8px 'Google Sans', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          `+${edge.data.properties.length - 4} more`,
+          panelX,
+          panelY + panelHeight / 2 - 6
+        );
+      }
+    };
+
+    // Draw edges
+    edges.forEach((edge) => {
+      const source = getNodeById(edge.source);
+      const target = getNodeById(edge.target);
+      if (!source || !target) return;
+
+      const sx = source.x + offsetX;
+      const sy = source.y + offsetY;
+      const tx = target.x + offsetX;
+      const ty = target.y + offsetY;
+
+      ctx.strokeStyle = edge.data.color || "#6b7280";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+
+      if (edge.source === edge.target) {
+        const loopSize = 80;
+        const baseAngle = -Math.PI / 2;
+        const arcSpread = 0.55;
+        const startAngle = baseAngle - arcSpread;
+        const endAngle = baseAngle + arcSpread;
+
+        const startX = sx + Math.cos(startAngle) * NODE_RADIUS;
+        const startY = sy + Math.sin(startAngle) * NODE_RADIUS;
+        const endX = sx + Math.cos(endAngle) * NODE_RADIUS;
+        const endY = sy + Math.sin(endAngle) * NODE_RADIUS;
+
+        const cx = sx + Math.cos(baseAngle) * loopSize * 1.8;
+        const cy = sy + Math.sin(baseAngle) * loopSize * 1.8;
+
         ctx.beginPath();
-        ctx.moveTo(propBoxX + radius, propBoxY);
-        ctx.lineTo(propBoxX + propBoxWidth - radius, propBoxY);
-        ctx.quadraticCurveTo(
-          propBoxX + propBoxWidth,
-          propBoxY,
-          propBoxX + propBoxWidth,
-          propBoxY + radius
-        );
-        ctx.lineTo(propBoxX + propBoxWidth, propBoxY + propBoxHeight - radius);
-        ctx.quadraticCurveTo(
-          propBoxX + propBoxWidth,
-          propBoxY + propBoxHeight,
-          propBoxX + propBoxWidth - radius,
-          propBoxY + propBoxHeight
-        );
-        ctx.lineTo(propBoxX + radius, propBoxY + propBoxHeight);
-        ctx.quadraticCurveTo(
-          propBoxX,
-          propBoxY + propBoxHeight,
-          propBoxX,
-          propBoxY + propBoxHeight - radius
-        );
-        ctx.lineTo(propBoxX, propBoxY + radius);
-        ctx.quadraticCurveTo(propBoxX, propBoxY, propBoxX + radius, propBoxY);
-        ctx.closePath();
-
-        ctx.fill();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(cx, cy, endX, endY);
         ctx.stroke();
 
-        // Draw properties header with subtle bottom border
-        ctx.fillStyle = darkMode ? "#4a5568" : "#e5e7eb";
-        ctx.fillRect(propBoxX, propBoxY, propBoxWidth, 28);
+        const arrowSize = 8;
+        const arrowAngle = endAngle + Math.PI / 2;
+        ctx.fillStyle = edge.data.color || "#6b7280";
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(
+          endX - arrowSize * Math.cos(arrowAngle - Math.PI / 6),
+          endY - arrowSize * Math.sin(arrowAngle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          endX - arrowSize * Math.cos(arrowAngle + Math.PI / 6),
+          endY - arrowSize * Math.sin(arrowAngle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fill();
 
-        // Header text
-        ctx.fillStyle = darkMode ? "#f3f4f6" : "#1f2937";
-        ctx.font = "600 12px sans-serif";
-        ctx.textAlign = "left";
+        const labelDistance = loopSize * 1.15;
+        const labelX = sx + Math.cos(baseAngle) * labelDistance;
+        const labelY = sy + Math.sin(baseAngle) * labelDistance;
+
+        const perpX = Math.cos(baseAngle);
+        const perpY = Math.sin(baseAngle);
+
+        const labelStyle = edge.data.labelStyle || "top";
+        let labelOffsetDist = 0;
+        if (labelStyle === "top") labelOffsetDist = -18;
+        else if (labelStyle === "bottom") labelOffsetDist = 18;
+
+        const finalLabelX = labelX + perpX * labelOffsetDist;
+        const finalLabelY = labelY + perpY * labelOffsetDist;
+
+        ctx.font = "bold 11px 'Google Sans', sans-serif";
+        ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("Properties", propBoxX + 10, propBoxY + 14);
 
-        // Draw property items
-        node.data.properties.forEach((prop, index) => {
-          const propY = propBoxY + 36 + index * 20;
+        const labelWidth =
+          ctx.measureText(edge.data.relationshipType).width + 14;
+        ctx.fillStyle = darkMode ? "#1f2937" : "#ffffff";
+        ctx.beginPath();
+        ctx.roundRect(
+          finalLabelX - labelWidth / 2,
+          finalLabelY - 10,
+          labelWidth,
+          20,
+          4
+        );
+        ctx.fill();
+        ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+        ctx.lineWidth = 1;
+        ctx.stroke();
 
-          // Property name and type
-          ctx.fillStyle = darkMode ? "#e2e8f0" : "#1f2937";
-          ctx.font = "500 11px sans-serif";
-          ctx.fillText(`${prop.name}: ${prop.type}`, propBoxX + 10, propY);
+        ctx.fillStyle = darkMode ? "#e5e7eb" : "#374151";
+        ctx.fillText(edge.data.relationshipType, finalLabelX, finalLabelY);
 
-          // Required/Unique indicators
-          if (prop.required || prop.unique) {
-            ctx.font = "bold 10px sans-serif";
-            const indicators = [
-              prop.required ? "R" : "",
-              prop.unique ? "U" : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
+        drawEdgePropertyPanel(edge, labelX, labelY, perpX, perpY);
+      } else {
+        const dx = tx - sx;
+        const dy = ty - sy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
 
-            ctx.fillStyle = darkMode ? "#93c5fd" : "#3b82f6";
-            ctx.textAlign = "right";
-            ctx.fillText(indicators, propBoxX + propBoxWidth - 10, propY);
-            ctx.textAlign = "left";
-          }
-        });
+        const startX = sx + Math.cos(angle) * NODE_RADIUS;
+        const startY = sy + Math.sin(angle) * NODE_RADIUS;
+        const endX = tx - Math.cos(angle) * NODE_RADIUS;
+        const endY = ty - Math.sin(angle) * NODE_RADIUS;
+
+        ctx.strokeStyle = edge.data.color || "#6b7280";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        const arrowSize = 10;
+        ctx.fillStyle = edge.data.color || "#6b7280";
+        ctx.beginPath();
+        ctx.moveTo(endX, endY);
+        ctx.lineTo(
+          endX - arrowSize * Math.cos(angle - Math.PI / 6),
+          endY - arrowSize * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.lineTo(
+          endX - arrowSize * Math.cos(angle + Math.PI / 6),
+          endY - arrowSize * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.closePath();
+        ctx.fill();
+
+        const perpX = dist > 0 ? -dy / dist : 0;
+        const perpY = dist > 0 ? dx / dist : -1;
+
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+
+        const labelStyle = edge.data.labelStyle || "top";
+        let labelOffsetDist = 0;
+        if (labelStyle === "top") labelOffsetDist = -18;
+        else if (labelStyle === "bottom") labelOffsetDist = 18;
+
+        const labelX = midX + perpX * labelOffsetDist;
+        const labelY = midY + perpY * labelOffsetDist;
+
+        ctx.font = "bold 11px 'Google Sans', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        const labelWidth =
+          ctx.measureText(edge.data.relationshipType).width + 14;
+        ctx.fillStyle = darkMode ? "#1f2937" : "#ffffff";
+        ctx.beginPath();
+        ctx.roundRect(labelX - labelWidth / 2, labelY - 10, labelWidth, 20, 4);
+        ctx.fill();
+
+        if (labelStyle !== "inline") {
+          ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+
+        ctx.fillStyle =
+          labelStyle === "inline"
+            ? edge.data.color || (darkMode ? "#d1d5db" : "#4b5563")
+            : darkMode
+            ? "#e5e7eb"
+            : "#374151";
+        ctx.fillText(edge.data.relationshipType, labelX, labelY);
+
+        drawEdgePropertyPanel(edge, midX, midY, perpX, perpY);
       }
     });
 
-    // Create and trigger download
-    canvasEl.toBlob((blob) => {
-      if (blob) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "neo4j-schema.png";
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    }, "image/png");
-  }, [schema.nodes, schema.edges, schema.getNodeById, darkMode]);
+    // Draw nodes
+    nodes.forEach((node) => {
+      const cx = node.x + offsetX;
+      const cy = node.y + offsetY;
 
-  const importJSON = useCallback(
+      ctx.shadowColor = "rgba(0, 0, 0, 0.2)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetY = 4;
+
+      ctx.fillStyle = node.data.color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, NODE_RADIUS, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 14px 'Google Sans', sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(node.data.label, cx, cy);
+
+      if (node.data.properties.length > 0) {
+        const panelPos = calculatePanelPosition(
+          node.x,
+          node.y,
+          node.id,
+          nodes,
+          node.data.propertyPanelPosition
+        );
+
+        const panelX = cx - NODE_RADIUS + panelPos.left;
+        const panelY = cy - NODE_RADIUS + panelPos.top;
+        const panelW = 200;
+        const rowHeight = 22;
+        const headerHeight = 28;
+        const panelH =
+          headerHeight +
+          Math.min(node.data.properties.length, 5) * rowHeight +
+          12;
+
+        ctx.shadowColor = "rgba(0, 0, 0, 0.15)";
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 2;
+
+        ctx.fillStyle = darkMode ? "#1f2937" : "#ffffff";
+        ctx.beginPath();
+        ctx.roundRect(panelX, panelY, panelW, panelH, 10);
+        ctx.fill();
+
+        ctx.shadowColor = "transparent";
+
+        ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        ctx.fillStyle = darkMode ? "#9ca3af" : "#6b7280";
+        ctx.font = "600 9px 'Google Sans', sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText("PROPERTIES", panelX + 10, panelY + 16);
+
+        ctx.strokeStyle = darkMode ? "#374151" : "#e5e7eb";
+        ctx.beginPath();
+        ctx.moveTo(panelX + 10, panelY + 26);
+        ctx.lineTo(panelX + panelW - 10, panelY + 26);
+        ctx.stroke();
+
+        const propsToShow = node.data.properties.slice(0, 5);
+        propsToShow.forEach((prop, idx) => {
+          const propY = panelY + headerHeight + idx * rowHeight + 12;
+
+          ctx.fillStyle = darkMode ? "#e5e7eb" : "#374151";
+          ctx.font = "500 11px 'Google Sans', sans-serif";
+          ctx.textAlign = "left";
+          ctx.fillText(prop.name, panelX + 10, propY);
+
+          ctx.fillStyle = darkMode ? "#9ca3af" : "#6b7280";
+          ctx.font = "400 9px 'Google Sans', sans-serif";
+          ctx.textAlign = "right";
+          ctx.fillText(prop.type, panelX + panelW - 10, propY);
+        });
+
+        if (node.data.properties.length > 5) {
+          const moreY = panelY + headerHeight + 5 * rowHeight + 12;
+          ctx.fillStyle = darkMode ? "#6b7280" : "#9ca3af";
+          ctx.font = "italic 10px 'Google Sans', sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText(
+            `+${node.data.properties.length - 5} more...`,
+            panelX + panelW / 2,
+            moreY
+          );
+        }
+      }
+    });
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "neo4j-schema.png";
+      a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }, [nodes, edges, getNodeById, darkMode, canvasRef]);
+
+  // ============ Import Function ============
+
+  const handleImport = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileImport = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          try {
-            const data = JSON.parse(ev.target?.result as string);
-            schema.loadSchema(data.nodes || [], data.edges || []);
-            canvas.clearSelection();
-          } catch (err) {
-            alert("Invalid JSON file");
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target?.result as string);
+          if (data.nodes && data.edges) {
+            setConfirmDialog({
+              isOpen: true,
+              title: "Import Schema",
+              message:
+                "This will replace your current schema. Do you want to continue?",
+              variant: "warning",
+              onConfirm: () => {
+                loadSchema(data.nodes, data.edges);
+                resetView();
+              },
+            });
+          } else {
+            alert("Invalid schema file format");
           }
-        };
-        reader.readAsText(file);
-      }
+        } catch (err) {
+          alert("Failed to parse JSON file");
+        }
+      };
+      reader.readAsText(file);
+
       e.target.value = "";
     },
-    [schema, canvas]
+    [loadSchema, resetView]
   );
 
-  // Get selected data
-  const selectedNode = canvas.selectedNodeId
-    ? schema.getNodeById(canvas.selectedNodeId)
-    : null;
-  const selectedEdge = canvas.selectedEdgeId
-    ? schema.getEdgeById(canvas.selectedEdgeId)
-    : null;
-  const detailsNode = detailsNodeId ? schema.getNodeById(detailsNodeId) : null;
+  // ============ Context Menu Actions ============
+
+  const handleDeleteNodeFromMenu = useCallback(
+    (nodeId: string) => {
+      setConfirmDialog({
+        isOpen: true,
+        title: "Delete Node",
+        message:
+          "Are you sure you want to delete this node and all its relationships?",
+        variant: "danger",
+        onConfirm: () => {
+          deleteNode(nodeId);
+          clearSelection();
+        },
+      });
+    },
+    [deleteNode, clearSelection]
+  );
+
+  const handleDuplicateNodeFromMenu = useCallback(
+    (nodeId: string) => {
+      const newNode = duplicateNode(nodeId);
+      if (newNode) {
+        selectNode(newNode.id);
+      }
+    },
+    [duplicateNode, selectNode]
+  );
+
+  const handleViewNodeDetails = useCallback((nodeId: string) => {
+    setNodeDetailsDialog({ isOpen: true, nodeId });
+  }, []);
+
+  const handleOpenNodeColorPicker = useCallback(
+    (nodeId: string) => {
+      const node = getNodeById(nodeId);
+      if (node) {
+        setColorPickerDialog({
+          isOpen: true,
+          targetType: "node",
+          targetId: nodeId,
+          currentColor: node.data.color,
+        });
+      }
+    },
+    [getNodeById]
+  );
+
+  const handleOpenEdgeColorPicker = useCallback(
+    (edgeId: string) => {
+      const edge = getEdgeById(edgeId);
+      if (edge) {
+        setColorPickerDialog({
+          isOpen: true,
+          targetType: "edge",
+          targetId: edgeId,
+          currentColor: edge.data.color,
+        });
+      }
+    },
+    [getEdgeById]
+  );
+
+  const handleColorSelect = useCallback(
+    (color: string) => {
+      if (
+        colorPickerDialog.targetType === "node" &&
+        colorPickerDialog.targetId
+      ) {
+        updateNodeData(colorPickerDialog.targetId, { color });
+      } else if (
+        colorPickerDialog.targetType === "edge" &&
+        colorPickerDialog.targetId
+      ) {
+        updateEdgeData(colorPickerDialog.targetId, { color });
+      }
+    },
+    [colorPickerDialog, updateNodeData, updateEdgeData]
+  );
+
+  const handleDeleteEdgeFromMenu = useCallback(
+    (edgeId: string) => {
+      deleteEdge(edgeId);
+      clearSelection();
+    },
+    [deleteEdge, clearSelection]
+  );
+
+  // ============ Render ============
 
   return (
-    <div className={`w-full h-full flex ${theme.bg} ${theme.text}`}>
-      {/* Hidden file input */}
+    <div className={`h-screen flex flex-col ${theme.bg} overflow-hidden`}>
       <input
         ref={fileInputRef}
         type="file"
         accept=".json"
-        onChange={importJSON}
         className="hidden"
+        onChange={handleFileImport}
       />
 
-      {/* Toolbar */}
       <Toolbar
         theme={theme}
-        zoom={canvas.zoom}
-        onAddNode={() => {
-          const node = schema.addNode({
-            x: 300 - canvas.panOffset.x / canvas.zoom,
-            y: 200 - canvas.panOffset.y / canvas.zoom,
-          });
-          canvas.selectNode(node.id);
-        }}
-        onExportJSON={exportAsJSON}
-        onExportImage={exportAsImage}
-        onExportCypher={exportAsCypher}
-        onImport={() => fileInputRef.current?.click()}
-        onZoomIn={canvas.zoomIn}
-        onZoomOut={canvas.zoomOut}
-        onResetView={canvas.resetView}
-      />
-
-      {/* Canvas */}
-      <Canvas
-        nodes={schema.nodes}
-        edges={schema.edges}
-        panOffset={canvas.panOffset}
-        zoom={canvas.zoom}
-        isPanning={canvas.isPanning}
-        selectedNodeId={canvas.selectedNodeId}
-        selectedEdgeId={canvas.selectedEdgeId}
-        hoveredNodeId={canvas.hoveredNodeId}
-        draggedNodeId={draggedNodeId}
-        isConnecting={isConnecting}
-        connectionSourceId={connectionSourceId}
-        mousePos={mousePos}
-        theme={theme}
+        zoom={zoom}
         darkMode={darkMode}
-        canvasRef={canvas.canvasRef}
-        onCanvasMouseDown={handleCanvasMouseDown}
-        onCanvasMouseMove={handleCanvasMouseMove}
-        onCanvasMouseUp={(e) => handleCanvasMouseUp(e)}
-        onCanvasWheel={handleCanvasWheel}
-        onCanvasContextMenu={handleCanvasContextMenu}
-        onNodeMouseDown={handleNodeMouseDown}
-        onNodeMouseUp={handleNodeMouseUp}
-        onNodeHover={canvas.setHoveredNodeId}
-        onNodeContextMenu={handleNodeContextMenu}
-        onConnectionStart={handleConnectionStart}
-        onEdgeClick={handleEdgeClick}
-        onEdgeContextMenu={handleEdgeContextMenu}
-        getNodeById={schema.getNodeById}
+        onAddNode={handleAddNode}
+        onExportJSON={handleExportJSON}
+        onExportImage={handleExportImage}
+        onExportCypher={handleExportCypher}
+        onImport={handleImport}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onResetView={resetView}
+        onClearCanvas={handleClearCanvas}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
       />
 
-      {/* Context Menu */}
+      <div className="flex-1 flex overflow-hidden">
+        <Canvas
+          nodes={nodes}
+          edges={edges}
+          panOffset={panOffset}
+          zoom={zoom}
+          isPanning={isPanning}
+          selectedNodeId={selectedNodeId}
+          selectedEdgeId={selectedEdgeId}
+          hoveredNodeId={hoveredNodeId}
+          draggedNodeId={draggedNodeId}
+          isConnecting={isConnecting}
+          connectionSourceId={connectionSourceId}
+          mousePos={mousePos}
+          theme={theme}
+          darkMode={darkMode}
+          canvasRef={canvasRef}
+          onCanvasMouseDown={handleCanvasMouseDown}
+          onCanvasMouseMove={handleCanvasMouseMove}
+          onCanvasMouseUp={handleCanvasMouseUp}
+          onCanvasWheel={handleCanvasWheel}
+          onCanvasContextMenu={handleCanvasContextMenu}
+          onNodeMouseDown={handleNodeMouseDown}
+          onNodeMouseUp={handleNodeMouseUp}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onNodeHover={setHoveredNodeId}
+          onNodeContextMenu={handleNodeContextMenu}
+          onConnectionStart={handleConnectionStart}
+          onEdgeClick={handleEdgeClick}
+          onEdgeContextMenu={handleEdgeContextMenu}
+          getNodeById={getNodeById}
+        />
+
+        <PropertiesPanel
+          selectedNode={selectedNode ?? null}
+          selectedEdge={selectedEdge ?? null}
+          theme={theme}
+          darkMode={darkMode}
+          onUpdateNodeData={updateNodeData}
+          onAddNodeProperty={addNodeProperty}
+          onUpdateNodeProperty={updateNodeProperty}
+          onDeleteNodeProperty={deleteNodeProperty}
+          onDeleteNode={handleDeleteNodeFromMenu}
+          onOpenColorPicker={handleOpenNodeColorPicker}
+          onUpdateEdgeData={updateEdgeData}
+          onAddEdgeProperty={addEdgeProperty}
+          onUpdateEdgeProperty={updateEdgeProperty}
+          onDeleteEdgeProperty={deleteEdgeProperty}
+          onReverseEdge={reverseEdge}
+          onDeleteEdge={handleDeleteEdgeFromMenu}
+          onOpenEdgeColorPicker={handleOpenEdgeColorPicker}
+        />
+      </div>
+
       <ContextMenu
         contextMenu={contextMenu}
         onClose={() => setContextMenu(null)}
         theme={theme}
-        screenToCanvas={(x, y) => {
-          const rect = canvas.canvasRef.current?.getBoundingClientRect();
-          if (!rect) return { x: 0, y: 0 };
-          return screenToCanvas(x + rect.left, y + rect.top);
-        }}
-        onAddNode={(x, y) => {
-          const node = schema.addNode({ x, y });
-          canvas.selectNode(node.id);
-        }}
-        onResetView={canvas.resetView}
-        onClearCanvas={() => setShowClearConfirm(true)}
-        onExportJSON={exportAsJSON}
-        onExportImage={exportAsImage}
-        onExportCypher={exportAsCypher}
-        onImport={() => fileInputRef.current?.click()}
-        onEditNode={(nodeId) => canvas.selectNode(nodeId)}
-        onViewNodeDetails={(nodeId) => setDetailsNodeId(nodeId)}
-        onDuplicateNode={(nodeId) => {
-          const newNode = schema.duplicateNode(nodeId);
-          if (newNode) canvas.selectNode(newNode.id);
-        }}
-        onChangeNodeColor={(nodeId) =>
-          setColorPickerTarget({ type: "node", id: nodeId })
-        }
-        onDeleteNode={(nodeId) => {
-          schema.deleteNode(nodeId);
-          if (canvas.selectedNodeId === nodeId) canvas.selectNode(null);
-        }}
-        onEditEdge={(edgeId) => canvas.selectEdge(edgeId)}
-        onReverseEdge={(edgeId) => schema.reverseEdge(edgeId)}
-        onChangeEdgeColor={(edgeId) =>
-          setColorPickerTarget({ type: "edge", id: edgeId })
-        }
-        onDeleteEdge={(edgeId) => {
-          schema.deleteEdge(edgeId);
-          if (canvas.selectedEdgeId === edgeId) canvas.selectEdge(null);
-        }}
+        screenToCanvas={screenToCanvas}
+        onAddNode={handleAddNodeAtPosition}
+        onResetView={resetView}
+        onClearCanvas={handleClearCanvas}
+        onExportJSON={handleExportJSON}
+        onExportImage={handleExportImage}
+        onExportCypher={handleExportCypher}
+        onImport={handleImport}
+        onEditNode={(nodeId) => selectNode(nodeId)}
+        onViewNodeDetails={handleViewNodeDetails}
+        onDuplicateNode={handleDuplicateNodeFromMenu}
+        onChangeNodeColor={handleOpenNodeColorPicker}
+        onDeleteNode={handleDeleteNodeFromMenu}
+        onEditEdge={(edgeId) => selectEdge(edgeId)}
+        onReverseEdge={reverseEdge}
+        onChangeEdgeColor={handleOpenEdgeColorPicker}
+        onDeleteEdge={handleDeleteEdgeFromMenu}
       />
 
-      {/* Properties Panel */}
-      <PropertiesPanel
-        selectedNode={selectedNode || null}
-        selectedEdge={selectedEdge || null}
-        theme={theme}
-        darkMode={darkMode}
-        onUpdateNodeData={(nodeId, data) => {
-          // Ensure propertyPanelPosition is properly merged with existing data
-          schema.updateNodeData(nodeId, {
-            ...data,
-            propertyPanelPosition: data.propertyPanelPosition || "auto",
-          });
-        }}
-        onAddNodeProperty={schema.addNodeProperty}
-        onUpdateNodeProperty={schema.updateNodeProperty}
-        onDeleteNodeProperty={schema.deleteNodeProperty}
-        onDeleteNode={(nodeId) => {
-          schema.deleteNode(nodeId);
-          canvas.selectNode(null);
-        }}
-        onOpenColorPicker={(nodeId) =>
-          setColorPickerTarget({ type: "node", id: nodeId })
-        }
-        onUpdateEdgeData={schema.updateEdgeData}
-        onAddEdgeProperty={schema.addEdgeProperty}
-        onUpdateEdgeProperty={schema.updateEdgeProperty}
-        onDeleteEdgeProperty={schema.deleteEdgeProperty}
-        onReverseEdge={schema.reverseEdge}
-        onDeleteEdge={(edgeId) => {
-          schema.deleteEdge(edgeId);
-          canvas.selectEdge(null);
-        }}
-        onOpenEdgeColorPicker={(edgeId) =>
-          setColorPickerTarget({ type: "edge", id: edgeId })
-        }
-      />
-
-      {/* Clear Confirmation Dialog */}
       <ConfirmDialog
-        isOpen={showClearConfirm}
-        onClose={() => setShowClearConfirm(false)}
-        onConfirm={() => {
-          schema.clearAll();
-          canvas.clearSelection();
-        }}
-        title="Clear Canvas"
-        message="Are you sure you want to clear the entire canvas? This will delete all nodes and relationships and cannot be undone."
-        confirmText="Clear All"
-        variant="danger"
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        variant={confirmDialog.variant}
         theme={theme}
         darkMode={darkMode}
       />
 
-      {/* Node Details Dialog */}
       <NodeDetailsDialog
-        isOpen={!!detailsNodeId}
-        onClose={() => setDetailsNodeId(null)}
-        node={detailsNode || null}
-        edges={schema.edges}
-        getNodeById={schema.getNodeById}
+        isOpen={nodeDetailsDialog.isOpen}
+        onClose={() => setNodeDetailsDialog({ isOpen: false, nodeId: null })}
+        node={
+          nodeDetailsDialog.nodeId
+            ? getNodeById(nodeDetailsDialog.nodeId) ?? null
+            : null
+        }
+        edges={edges}
+        getNodeById={getNodeById}
         theme={theme}
         darkMode={darkMode}
       />
 
-      {/* Color Picker Dialog */}
       <ColorPickerDialog
-        isOpen={!!colorPickerTarget}
-        onClose={() => setColorPickerTarget(null)}
-        currentColor={
-          colorPickerTarget?.type === "node"
-            ? schema.getNodeById(colorPickerTarget.id)?.data.color || "#FF6B6B"
-            : colorPickerTarget?.type === "edge"
-            ? schema.getEdgeById(colorPickerTarget.id)?.data.color || "#6b7280"
-            : "#FF6B6B"
+        isOpen={colorPickerDialog.isOpen}
+        onClose={() =>
+          setColorPickerDialog((prev) => ({ ...prev, isOpen: false }))
         }
-        onSelect={(color) => {
-          if (colorPickerTarget?.type === "node") {
-            schema.updateNodeData(colorPickerTarget.id, { color });
-          } else if (colorPickerTarget?.type === "edge") {
-            schema.updateEdgeData(colorPickerTarget.id, { color });
-          }
-        }}
-        title={
-          colorPickerTarget?.type === "node"
-            ? "Node Color"
-            : "Relationship Color"
-        }
+        onSelect={handleColorSelect}
+        currentColor={colorPickerDialog.currentColor}
+        title={`Choose ${
+          colorPickerDialog.targetType === "node" ? "Node" : "Relationship"
+        } Color`}
         theme={theme}
         darkMode={darkMode}
       />
@@ -755,26 +1158,4 @@ const Neo4jSchemaModeler: React.FC<Neo4jSchemaModelerProps> = ({
   );
 };
 
-// App wrapper with theme toggle
-export default function App() {
-  const [darkMode, setDarkMode] = useState(true);
-
-  return (
-    <div className="w-full h-screen">
-      <div className="absolute top-4 right-4 z-20">
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className={`px-4 py-2 rounded-lg flex items-center gap-2 shadow-lg border transition-colors ${
-            darkMode
-              ? "bg-gray-800 text-white hover:bg-gray-700 border-gray-700"
-              : "bg-white text-gray-900 hover:bg-gray-100 border-gray-200"
-          }`}
-        >
-          {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-          {darkMode ? "Light" : "Dark"}
-        </button>
-      </div>
-      <Neo4jSchemaModeler darkMode={darkMode} />
-    </div>
-  );
-}
+export default App;

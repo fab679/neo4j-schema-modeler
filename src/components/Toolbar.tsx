@@ -1,21 +1,23 @@
 import React from "react";
 import {
-  Circle,
-  Save,
-  FolderOpen,
+  Plus,
+  Download,
+  Upload,
   Image,
   FileCode,
   ZoomIn,
   ZoomOut,
-  Undo2,
-  Redo2,
-  Maximize2,
+  Maximize,
+  Moon,
+  Sun,
+  Trash2,
 } from "lucide-react";
 import type { ThemeClasses } from "../types";
 
 interface ToolbarProps {
   theme: ThemeClasses;
   zoom: number;
+  darkMode: boolean;
   onAddNode: () => void;
   onExportJSON: () => void;
   onExportImage: () => void;
@@ -24,15 +26,14 @@ interface ToolbarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onResetView: () => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
+  onClearCanvas: () => void;
+  onToggleDarkMode: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
   theme,
   zoom,
+  darkMode,
   onAddNode,
   onExportJSON,
   onExportImage,
@@ -41,142 +42,138 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onZoomIn,
   onZoomOut,
   onResetView,
-  onUndo,
-  onRedo,
-  canUndo = false,
-  canRedo = false,
+  onClearCanvas,
+  onToggleDarkMode,
 }) => {
+  const iconColor = darkMode ? "text-gray-300" : "text-gray-600";
+
   const ToolButton: React.FC<{
-    icon: React.ReactNode;
-    title: string;
     onClick: () => void;
-    disabled?: boolean;
+    icon: React.ReactNode;
+    label: string;
     primary?: boolean;
-  }> = ({ icon, title, onClick, disabled, primary }) => (
+    danger?: boolean;
+  }> = ({ onClick, icon, label, primary, danger }) => (
     <button
       onClick={onClick}
-      disabled={disabled}
-      className={`p-3 rounded-xl transition-all duration-200 flex items-center justify-center
+      className={`
+        flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium
+        transition-all duration-200 text-sm
         ${
-          disabled
-            ? "opacity-40 cursor-not-allowed"
-            : primary
-            ? "bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl"
-            : `${theme.hover} hover:shadow-md`
+          primary
+            ? "bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/25"
+            : danger
+            ? `${theme.surface} ${iconColor} ${theme.hover} hover:bg-red-500/10 hover:text-red-500`
+            : `${theme.surface} ${iconColor} ${theme.hover} hover:shadow-md`
         }
       `}
-      title={title}
+      title={label}
     >
       {icon}
+      <span className="hidden lg:inline">{label}</span>
     </button>
-  );
-
-  const Divider = () => (
-    <div className={`w-10 h-px my-2.5 ${theme.border} opacity-50`} />
-  );
-
-  const SectionLabel: React.FC<{ children: React.ReactNode }> = ({
-    children,
-  }) => (
-    <span
-      className={`text-[10px] font-medium uppercase tracking-wider ${theme.textMuted} mt-2.5 mb-1`}
-    >
-      {children}
-    </span>
   );
 
   return (
     <div
-      className={`w-20 ${theme.surface} border-r ${theme.border} flex flex-col items-center py-5 px-2.5 gap-1.5 shadow-lg`}
+      className={`${theme.surface} border-b ${theme.border} px-6 py-3.5 flex items-center justify-between shadow-sm`}
     >
-      {/* Add Node - Primary Action */}
-      <SectionLabel>Create</SectionLabel>
-      <ToolButton
-        icon={<Circle size={24} strokeWidth={2.5} />}
-        title="Add Node"
-        onClick={onAddNode}
-        primary
-      />
+      {/* Left section - Logo and Add Node */}
+      <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+            <span className="text-white font-bold text-lg">N</span>
+          </div>
+          <div>
+            <h1 className={`text-lg font-bold ${theme.text}`}>
+              Schema Modeler
+            </h1>
+            <p className={`text-xs ${theme.textMuted}`}>
+              Neo4j Visual Designer
+            </p>
+          </div>
+        </div>
 
-      <Divider />
+        <div className={`h-8 w-px ${theme.border} mx-2`} />
 
-      {/* Export/Import */}
-      <SectionLabel>File</SectionLabel>
-      <ToolButton
-        icon={<Save size={22} />}
-        title="Export JSON"
-        onClick={onExportJSON}
-      />
-      <ToolButton
-        icon={<FolderOpen size={22} />}
-        title="Import JSON"
-        onClick={onImport}
-      />
-      <ToolButton
-        icon={<Image size={22} />}
-        title="Export Image"
-        onClick={onExportImage}
-      />
-      <ToolButton
-        icon={<FileCode size={22} />}
-        title="Export Cypher"
-        onClick={onExportCypher}
-      />
-
-      <Divider />
-
-      {/* Zoom Controls */}
-      <SectionLabel>View</SectionLabel>
-      <ToolButton
-        icon={<ZoomIn size={22} />}
-        title="Zoom In"
-        onClick={onZoomIn}
-      />
-      <div
-        className={`py-2 px-3 rounded-lg ${theme.input} ${theme.text} text-sm font-medium min-w-14 text-center`}
-      >
-        {Math.round(zoom * 100)}%
+        <ToolButton
+          onClick={onAddNode}
+          icon={<Plus size={18} />}
+          label="Add Node"
+          primary
+        />
       </div>
-      <ToolButton
-        icon={<ZoomOut size={22} />}
-        title="Zoom Out"
-        onClick={onZoomOut}
-      />
-      <ToolButton
-        icon={<Maximize2 size={22} />}
-        title="Reset View"
-        onClick={onResetView}
-      />
 
-      {/* Undo/Redo - if available */}
-      {(onUndo || onRedo) && (
-        <>
-          <Divider />
-          <SectionLabel>Edit</SectionLabel>
-          {onUndo && (
-            <ToolButton
-              icon={<Undo2 size={22} />}
-              title="Undo (Ctrl+Z)"
-              onClick={onUndo}
-              disabled={!canUndo}
-            />
+      {/* Center section - Zoom controls */}
+      <div className="flex items-center gap-2">
+        <ToolButton
+          onClick={onZoomOut}
+          icon={<ZoomOut size={18} />}
+          label="Zoom Out"
+        />
+        <div
+          className={`px-4 py-2 rounded-xl ${theme.surface} ${theme.text} font-mono text-sm min-w-[80px] text-center border ${theme.border}`}
+        >
+          {Math.round(zoom * 100)}%
+        </div>
+        <ToolButton
+          onClick={onZoomIn}
+          icon={<ZoomIn size={18} />}
+          label="Zoom In"
+        />
+        <ToolButton
+          onClick={onResetView}
+          icon={<Maximize size={18} />}
+          label="Reset View"
+        />
+      </div>
+
+      {/* Right section - File operations and settings */}
+      <div className="flex items-center gap-2">
+        <ToolButton
+          onClick={onImport}
+          icon={<Upload size={18} />}
+          label="Import"
+        />
+        <ToolButton
+          onClick={onExportJSON}
+          icon={<Download size={18} />}
+          label="Export JSON"
+        />
+        <ToolButton
+          onClick={onExportImage}
+          icon={<Image size={18} />}
+          label="Export Image"
+        />
+        <ToolButton
+          onClick={onExportCypher}
+          icon={<FileCode size={18} />}
+          label="Export Cypher"
+        />
+
+        <div className={`h-8 w-px ${theme.border} mx-2`} />
+
+        <ToolButton
+          onClick={onClearCanvas}
+          icon={<Trash2 size={18} />}
+          label="Clear All"
+          danger
+        />
+
+        <div className={`h-8 w-px ${theme.border} mx-2`} />
+
+        <button
+          onClick={onToggleDarkMode}
+          className={`p-2.5 rounded-xl ${theme.surface} ${theme.hover} transition-all duration-200`}
+          title={darkMode ? "Light Mode" : "Dark Mode"}
+        >
+          {darkMode ? (
+            <Sun size={20} className="text-yellow-400" />
+          ) : (
+            <Moon size={20} className="text-gray-600" />
           )}
-          {onRedo && (
-            <ToolButton
-              icon={<Redo2 size={22} />}
-              title="Redo (Ctrl+Y)"
-              onClick={onRedo}
-              disabled={!canRedo}
-            />
-          )}
-        </>
-      )}
-
-      {/* Spacer to push version to bottom */}
-      <div className="flex-1" />
-
-      {/* Version indicator */}
-      <span className={`text-[10px] ${theme.textMuted} opacity-50`}>v2.0</span>
+        </button>
+      </div>
     </div>
   );
 };

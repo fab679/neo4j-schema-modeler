@@ -1,8 +1,9 @@
-// Complete Neo4j Property Types
+// Complete Neo4j Property Types - Extended
 export const NEO4J_PROPERTY_TYPES = [
   // Scalar Types
   "String",
   "Boolean",
+  "Any",
   // Numeric Types
   "Integer",
   "Long",
@@ -15,27 +16,51 @@ export const NEO4J_PROPERTY_TYPES = [
   "DateTime",
   "LocalDateTime",
   "Duration",
+  "ZonedDateTime",
+  "ZonedTime",
   // Spatial Types
   "Point",
   "CartesianPoint",
+  "WGS84Point",
+  "Cartesian3DPoint",
+  "WGS843DPoint",
+  // Composite Types
+  "Map",
+  "List",
   // Array Types
   "StringArray",
   "IntegerArray",
+  "LongArray",
   "FloatArray",
+  "DoubleArray",
   "BooleanArray",
   "DateArray",
+  "DateTimeArray",
+  "DurationArray",
   "PointArray",
+  "ByteArray",
+  // Graph Types
+  "Node",
+  "Relationship",
+  "Path",
 ] as const;
 
 export type Neo4jPropertyType = (typeof NEO4J_PROPERTY_TYPES)[number];
 
-// Property panel position options
+// 9-direction property panel position options
 export type PropertyPanelPosition =
   | "auto"
   | "top"
+  | "top-left"
+  | "top-right"
   | "bottom"
+  | "bottom-left"
+  | "bottom-right"
   | "left"
   | "right";
+
+// Relationship label style options: inline (on line), top (above), bottom (below)
+export type RelationshipLabelStyle = "inline" | "top" | "bottom";
 
 export interface PropertyType {
   name: string;
@@ -50,13 +75,14 @@ export interface Neo4jNodeData {
   properties: PropertyType[];
   color: string;
   definition?: string;
-  propertyPanelPosition?: PropertyPanelPosition; // Custom positioning
+  propertyPanelPosition?: PropertyPanelPosition;
 }
 
 export interface Neo4jEdgeData {
   relationshipType: string;
   properties: PropertyType[];
   color: string;
+  labelStyle?: RelationshipLabelStyle;
 }
 
 export interface Node {

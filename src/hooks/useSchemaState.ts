@@ -39,6 +39,7 @@ export function useSchemaState({
             data?.color ||
             DEFAULT_NODE_COLORS[nodes.length % DEFAULT_NODE_COLORS.length],
           definition: data?.definition || "",
+          propertyPanelPosition: data?.propertyPanelPosition || "auto",
         },
       };
       setNodes((prev) => [...prev, newNode]);
@@ -113,6 +114,7 @@ export function useSchemaState({
             data?.relationshipType || (isSelf ? "SELF_REF" : "RELATES_TO"),
           properties: data?.properties || [],
           color: data?.color || "#6b7280",
+          labelStyle: data?.labelStyle || "badge",
         },
       };
       setEdges((prev) => [...prev, newEdge]);
